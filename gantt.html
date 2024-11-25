@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>GanntChart</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.css">
+    <link href="dist/output.css" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="env.js"></script>
+    <script type="module" src="firebase-config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-gray-100 p-5">
+    <div class="max-w-7xl mx-auto bg-white rounded-lg shadow-sm p-6 mb-8">
+        <div class="flex items-center justify-between">
+            <button onclick="window.location.href='.'" 
+                    class="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+            <div class="flex items-center gap-3">
+                <h1 id="eventTitle" class="text-2xl font-bold text-gray-800">Loading...</h1>
+                <button onclick="editEventName()" class="text-gray-500 hover:text-blue-500">
+                    <i class="fas fa-edit text-xl"></i>
+                </button>
+            </div>
+            <div class="w-[88px]"></div> 
+        </div>
+    </div>
+    
+    <div class="max-w-7xl mx-auto bg-white rounded-lg shadow-sm p-6">
+        <div class="w-full">
+            <div class="flex justify-end gap-4 mb-6">
+                <button id="addTask" class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">
+                    Tambah Kegiatan
+                </button>
+                <button id="toggleDetails" class="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600">
+                    Show Detail
+                </button>
+                <select id="viewMode" class="px-4 py-2 border rounded-md">
+                    <option value="Quarter Day">Quarter Day</option>
+                    <option value="Half Day">Half Day</option>
+                    <option value="Day">Day</option>
+                    <option value="Week">Week</option>
+                    <option value="Month" selected>Month</option>
+                </select>
+            </div>
+            <svg id="gantt"></svg>
+        </div>
+    </div>
+
+    <div id="taskDetails" class="max-w-7xl mx-auto mt-8 hidden">
+        <div id="taskList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+    </div>
+
+    <!-- Modal -->
+    <div id="taskModal" class="fixed inset-0 bg-black bg-opacity-50 hidden">
+        <div class="bg-white max-w-xl mx-auto mt-10 rounded-lg p-5 relative max-h-[85vh] overflow-y-auto m-4">
+            <span class="close absolute top-4 right-4 text-2xl cursor-pointer" onclick="document.getElementById('taskModal').style.display='none'">&times;</span>
+            <h2 id="modalTitle" class="text-lg font-bold mb-4">Tambah Kegiatan Baru</h2>
+            <form id="taskForm" class="space-y-4">
+                <input type="hidden" id="taskId">
+                <div>
+                    <label class="block text-sm font-medium mb-1">Nama Kegiatan:</label>
+                    <input type="text" id="taskName" required class="w-full p-2 border rounded-md">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Tanggal Mulai:</label>
+                    <input type="date" id="taskStart" required class="w-full p-2 border rounded-md" 
+                           onchange="validateDates()">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Tanggal Selesai:</label>
+                    <input type="date" id="taskEnd" required class="w-full p-2 border rounded-md"
+                           onchange="validateDates()">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Progress (%):</label>
+                    <input type="number" id="taskProgress" min="0" max="100" required class="w-full p-2 border rounded-md">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Dependensi:</label>
+                    <input type="text" id="taskDependencies" 
+                        placeholder="ID task yang harus selesai (contoh: 1,2,3)" 
+                        class="w-full p-2 border rounded-md">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Deskripsi Aktivitas:</label>
+                    <textarea id="taskDescription" rows="3" required class="w-full p-2 border rounded-md"></textarea>
+                </div>
+                <button type="submit" class="w-full bg-blue-500 text-white py-2 rounded-md hover:bg-blue-600 mb-4">
+                    Simpan
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div id="footer-container"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
+    <script>
+        window.db = null;
+        window.tasks = [];
+        window.eventId = null;
+        window.loadTasks = null;
+
+        window.showModal = function(isEdit = false, taskData = null) {
+            const modal = document.getElementById('taskModal');
+            const modalTitle = document.getElementById('modalTitle');
+            const form = document.getElementById('taskForm');
+            
+            modalTitle.textContent = isEdit ? 'Edit Kegiatan' : 'Tambah Kegiatan Baru';
+            
+            if (taskData) {
+                document.getElementById('taskId').value = taskData.id;
+                document.getElementById('taskName').value = taskData.name;
+                document.getElementById('taskStart').value = taskData.start;
+                document.getElementById('taskEnd').value = taskData.end;
+                document.getElementById('taskProgress').value = taskData.progress;
+                document.getElementById('taskDependencies').value = taskData.dependencies;
+                document.getElementById('taskDescription').value = taskData.description;
+            } else {
+                form.reset();
+                document.getElementById('taskId').value = '';
+            }
+            
+            modal.style.display = 'block';
+        }
+
+
+        window.editTask = async function(taskId) {
+            try {
+                const task = window.tasks.find(t => t.id === taskId);
+                if (task) {
+                    window.showModal(true, task);
+                } else {
+                    throw new Error('Task tidak ditemukan');
+                }
+            } catch (error) {
+                console.error("Error editing task:", error);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: 'Gagal mengedit kegiatan'
+                });
+            }
+        }
+
+        window.deleteTask = async function(taskId) {
+            try {
+                const result = await Swal.fire({
+                    title: 'Apakah Anda yakin?',
+                    text: "Kegiatan yang dihapus tidak dapat dikembalikan!",
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#d33',
+                    cancelButtonColor: '#3085d6',
+                    confirmButtonText: 'Ya, hapus!',
+                    cancelButtonText: 'Batal'
+                });
+
+                if (result.isConfirmed) {
+                    await window.db.collection('events').doc(window.eventId).collection('tasks').doc(taskId).delete();
+                    if (typeof window.loadTasks === 'function') {
+                        await window.loadTasks();
+                    }
+                    
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Terhapus!',
+                        text: 'Kegiatan berhasil dihapus',
+                        timer: 1500,
+                        showConfirmButton: false
+                    });
+                }
+            } catch (error) {
+                console.error("Error deleting task:", error);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: 'Gagal menghapus kegiatan'
+                });
+            }
+        }
+
+ 
+        window.addEventListener('click', (e) => {
+            const modal = document.getElementById('taskModal');
+            if (e.target === modal) {
+                modal.style.display = 'none';
+            }
+        });
+    </script>
+    <script type="module">
+        import { createFooter } from './components/footer.js';
+        
+        document.getElementById('footer-container').innerHTML = createFooter();
+
+        import { db } from './firebase-config.js';
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const eventId = urlParams.get('eventId');
+
+        if (!eventId) {
+            window.location.href = '.';
+        }
+
+        let tasks = [];
+        let gantt;
+
+        window.db = db;
+        window.eventId = eventId;
+
+        window.addEventListener('reloadTasks', loadTasks);
+
+        async function loadTasks() {
+            try {
+                const snapshot = await db.collection('events').doc(eventId).collection('tasks').get();
+                tasks = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                window.tasks = tasks; 
+
+                if (tasks.length === 0) {
+           
+                    const ganttArea = document.querySelector('#gantt').parentElement;
+                    ganttArea.innerHTML = `
+                        <div class="text-center py-12">
+                            <i class="fas fa-tasks text-gray-400 text-5xl mb-4"></i>
+                            <p class="text-gray-500 text-lg mb-4">Belum ada kegiatan yang ditambahkan</p>
+                            <button onclick="window.showModal()" 
+                                class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">
+                                <i class="fas fa-plus mr-2"></i>
+                                Tambah Kegiatan Pertama
+                            </button>
+                        </div>
+                    `;
+
+                    document.querySelector('.flex.justify-end.gap-4').style.display = 'none';
+                    
+                    document.getElementById('taskDetails').style.display = 'none';
+                    
+                    Swal.fire({
+                        title: 'Belum ada kegiatan',
+                        text: 'Anda belum memiliki kegiatan untuk event ini. Tambah kegiatan sekarang?',
+                        icon: 'info',
+                        showCancelButton: true,
+                        confirmButtonText: 'Ya, tambah kegiatan',
+                        cancelButtonText: 'Tidak, nanti saja'
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            window.showModal();
+                        }
+                    });
+                    return;
+                }
+
+                document.querySelector('.flex.justify-end.gap-4').style.display = 'flex';
+                document.querySelector('#gantt').innerHTML = '';
+
+                if (!gantt) {
+                    gantt = new Gantt("#gantt", tasks, {
+                        view_modes: ['Quarter Day', 'Half Day', 'Day', 'Week', 'Month'],
+                        view_mode: 'Month',
+                        date_format: 'YYYY-MM-DD',
+                        arrow_curve: 15,
+                        bar_height: 40,
+                        bar_corner_radius: 3,
+                        dependencies_enabled: true,
+                        draggable: false,
+                        on_click: function(task) {
+
+                            Swal.fire({
+                                title: task.name,
+                                html: `
+                                    <div class="text-left">
+                                        <p><strong>Progress:</strong> ${task.progress}%</p>
+                                        <p><strong>Mulai:</strong> ${task.start}</p>
+                                        <p><strong>Selesai:</strong> ${task.end}</p>
+                                        <p><strong>Deskripsi:</strong></p>
+                                        <p class="text-sm">${task.description}</p>
+                                    </div>
+                                `,
+                                showCancelButton: true,
+                                confirmButtonText: 'Edit',
+                                cancelButtonText: 'Tutup'
+                            }).then((result) => {
+                                if (result.isConfirmed) {
+                                    window.editTask(task.id);
+                                }
+                            });
+                        },
+                        on_date_change: function(task, start, end) {
+ 
+                            const originalTask = tasks.find(t => t.id === task.id);
+                            if (originalTask) {
+                                task.start = originalTask.start;
+                                task.end = originalTask.end;
+                                gantt.refresh(tasks);
+                            }
+                            return false;
+                        },
+                        on_progress_change: function(task, progress) {
+  
+                            const originalTask = tasks.find(t => t.id === task.id);
+                            if (originalTask) {
+                                task.progress = originalTask.progress;
+                                gantt.refresh(tasks);
+                            }
+                            return false;
+                        }
+                    });
+                } else {
+                    gantt.refresh(tasks);
+                }
+                renderTaskList();
+            } catch (error) {
+                console.error("Error loading tasks:", error);
+            }
+        }
+
+        window.loadTasks = loadTasks;
+
+        function renderTaskList() {
+            const taskList = document.getElementById('taskList');
+            taskList.innerHTML = '';
+            window.tasks.forEach(task => {
+                const taskElement = document.createElement('div');
+                taskElement.className = 'bg-white rounded-lg shadow-sm p-6 relative';
+                taskElement.innerHTML = `
+                    <button onclick="window.deleteTask('${task.id}')" 
+                            class="absolute top-4 right-20 px-3 py-1 bg-red-500 text-white rounded-md hover:bg-red-600">
+                        Hapus
+                    </button>
+                    <button onclick="window.editTask('${task.id}')" 
+                            class="absolute top-4 right-4 px-3 py-1 bg-green-500 text-white rounded-md hover:bg-green-600">
+                        Edit
+                    </button>
+                    <h3 class="text-lg font-semibold mb-4">${task.name}</h3>
+                    <div class="w-full bg-gray-200 rounded-full h-2 mb-4">
+                        <div class="bg-blue-500 h-2 rounded-full" style="width: ${task.progress}%"></div>
+                    </div>
+                    <p class="mb-2"><span class="font-medium">Progress:</span> ${task.progress}%</p>
+                    <p class="mb-2"><span class="font-medium">Aktivitas:</span></p>
+                    <p class="whitespace-pre-line text-sm text-gray-600 mb-4 task-description">${task.description}</p>
+                    <p class="mb-2"><span class="font-medium">Mulai:</span> ${task.start}</p>
+                    <p class="mb-2"><span class="font-medium">Selesai:</span> ${task.end}</p>
+                    <p class="mb-2"><span class="font-medium">ID Task:</span> ${task.id}</p>
+                    <p><span class="font-medium">Dependensi:</span> ${task.dependencies || 'Tidak ada'}</p>
+                `;
+                taskList.appendChild(taskElement);
+            });
+        }
+
+        document.getElementById('viewMode').addEventListener('change', (e) => {
+            if (gantt) {
+                gantt.change_view_mode(e.target.value);
+            }
+        });
+
+        document.getElementById('toggleDetails').addEventListener('click', function() {
+            const detailsDiv = document.getElementById('taskDetails');
+            const button = document.getElementById('toggleDetails');
+            
+            if (detailsDiv.style.display === 'none') {
+                detailsDiv.style.display = 'block';
+                button.textContent = 'Hide Detail';
+            } else {
+                detailsDiv.style.display = 'none';
+                button.textContent = 'Show Detail';
+            }
+        });
+
+
+        document.getElementById('taskForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const isFirstTask = tasks.length === 0;
+            
+            const startDate = new Date(document.getElementById('taskStart').value);
+            const endDate = new Date(document.getElementById('taskEnd').value);
+
+            if (endDate < startDate) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: 'Tanggal selesai tidak boleh lebih awal dari tanggal mulai!'
+                });
+                return;
+            }
+            
+            const taskId = document.getElementById('taskId').value;
+            const lastTask = tasks.length > 0 ? Math.max(...tasks.map(t => parseInt(t.id))) : 0;
+            const newId = taskId || String(lastTask + 1);
+            
+            const newTask = {
+                id: newId,
+                name: document.getElementById('taskName').value,
+                start: document.getElementById('taskStart').value,
+                end: document.getElementById('taskEnd').value,
+                progress: parseInt(document.getElementById('taskProgress').value),
+                dependencies: document.getElementById('taskDependencies').value,
+                description: document.getElementById('taskDescription').value
+            };
+
+            try {
+                if (taskId) {
+                    await db.collection('events').doc(eventId).collection('tasks').doc(taskId).update(newTask);
+                    await loadTasks();
+                } else {
+                    const docRef = await db.collection('events').doc(eventId).collection('tasks').doc(newId);
+                    await docRef.set(newTask);
+                    
+                    if (isFirstTask) {
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Berhasil!',
+                            text: 'Kegiatan pertama berhasil ditambahkan',
+                            timer: 1500,
+                            showConfirmButton: false
+                        }).then(() => {
+                            window.location.reload();
+                        });
+                    } else {
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Berhasil!',
+                            text: 'Kegiatan baru berhasil ditambahkan',
+                            timer: 1500,
+                            showConfirmButton: false
+                        });
+                        await loadTasks();
+                    }
+                }
+                
+                document.getElementById('taskModal').style.display = 'none';
+                if (!taskId && !isFirstTask) {
+                    setTimeout(() => {
+                        const ganttContainer = document.querySelector('#gantt');
+                        ganttContainer.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                    }, 100);
+                }
+            } catch (error) {
+                console.error("Error saving task:", error);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: 'Gagal menyimpan task: ' + error.message
+                });
+            }
+        });
+
+
+        document.getElementById('addTask').addEventListener('click', () => window.showModal());
+
+        document.querySelector('.close').addEventListener('click', () => {
+            document.getElementById('taskModal').style.display = 'none';
+        });
+
+        window.addEventListener('click', (e) => {
+            const modal = document.getElementById('taskModal');
+            if (e.target === modal) {
+                modal.style.display = 'none';
+            }
+        });
+
+ 
+        async function deleteTask(taskId) {
+            const result = await Swal.fire({
+                title: 'Apakah Anda yakin?',
+                text: "Kegiatan yang dihapus tidak dapat dikembalikan!",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'Ya, hapus!',
+                cancelButtonText: 'Batal'
+            });
+
+            if (result.isConfirmed) {
+                try {
+                    await db.collection('events').doc(eventId).collection('tasks').doc(taskId).delete();
+                    await loadTasks();
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Terhapus!',
+                        text: 'Kegiatan berhasil dihapus',
+                        timer: 1500,
+                        showConfirmButton: false
+                    });
+                } catch (error) {
+                    console.error("Error deleting task:", error);
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Oops...',
+                        text: 'Gagal menghapus kegiatan'
+                    });
+                }
+            }
+        }
+
+
+        loadTasks();
+        loadEventData();
+
+        function validateDates() {
+            const startInput = document.getElementById('taskStart');
+            const endInput = document.getElementById('taskEnd');
+            
+            if (startInput.value && endInput.value) {
+                const startDate = new Date(startInput.value);
+                const endDate = new Date(endInput.value);
+                
+                if (endDate < startDate) {
+                    endInput.setCustomValidity('Tanggal selesai tidak boleh lebih awal dari tanggal mulai');
+                    endInput.reportValidity();
+                } else {
+                    endInput.setCustomValidity('');
+                }
+            }
+        }
+
+    
+        async function loadEventData() {
+            try {
+                const eventDoc = await db.collection('events').doc(eventId).get();
+                if (eventDoc.exists) {
+                    const eventData = eventDoc.data();
+                    document.getElementById('eventTitle').textContent = eventData.name;
+                }
+            } catch (error) {
+                console.error("Error loading event:", error);
+            }
+        }
+
+        async function editEventName() {
+            const eventDoc = await db.collection('events').doc(eventId).get();
+            const currentName = eventDoc.data().name;
+
+            const { value: newName } = await Swal.fire({
+                title: 'Edit Nama Event',
+                input: 'text',
+                inputValue: currentName,
+                inputLabel: 'Nama Event',
+                showCancelButton: true,
+                confirmButtonText: 'Simpan',
+                cancelButtonText: 'Batal',
+                inputValidator: (value) => {
+                    if (!value) {
+                        return 'Nama event tidak boleh kosong!';
+                    }
+                }
+            });
+
+            if (newName && newName !== currentName) {
+                try {
+                    await db.collection('events').doc(eventId).update({
+                        name: newName
+                    });
+                    document.getElementById('eventTitle').textContent = newName;
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Berhasil!',
+                        text: 'Nama event berhasil diperbarui',
+                        timer: 1500,
+                        showConfirmButton: false
+                    });
+                } catch (error) {
+                    console.error("Error updating event name:", error);
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: 'Gagal memperbarui nama event'
+                    });
+                }
+            }
+        }
+
+        window.tasks = tasks;
+    </script>
+</body>
+</html>
