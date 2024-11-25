@@ -618,8 +618,9 @@ video {
   grid-column: 1 / -1;
 }
 
-.m-4 {
-  margin: 1rem;
+.mx-4 {
+  margin-left: 1rem;
+  margin-right: 1rem;
 }
 
 .mx-auto {
@@ -653,10 +654,6 @@ video {
 
 .mr-3 {
   margin-right: 0.75rem;
-}
-
-.mt-0 {
-  margin-top: 0px;
 }
 
 .mt-2 {
@@ -707,8 +704,8 @@ video {
   height: 1.5rem;
 }
 
-.max-h-\[85vh\] {
-  max-height: 85vh;
+.max-h-\[90vh\] {
+  max-height: 90vh;
 }
 
 .w-3\/4 {
@@ -780,6 +777,10 @@ video {
 
 .justify-end {
   justify-content: flex-end;
+}
+
+.justify-center {
+  justify-content: center;
 }
 
 .justify-between {
