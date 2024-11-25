@@ -1,0 +1,55 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Build CSS
+        run: npm run build:css
+
+      - name: Create dist directory
+        run: mkdir -p dist
+
+      - name: Create env.js
+        run: |
+          echo "window.FIREBASE_API_KEY='${{ secrets.FIREBASE_API_KEY }}';" > dist/env.js
+          echo "window.FIREBASE_AUTH_DOMAIN='${{ secrets.FIREBASE_AUTH_DOMAIN }}';" >> dist/env.js
+          echo "window.FIREBASE_DATABASE_URL='${{ secrets.FIREBASE_DATABASE_URL }}';" >> dist/env.js
+          echo "window.FIREBASE_PROJECT_ID='${{ secrets.FIREBASE_PROJECT_ID }}';" >> dist/env.js
+          echo "window.FIREBASE_STORAGE_BUCKET='${{ secrets.FIREBASE_STORAGE_BUCKET }}';" >> dist/env.js
+          echo "window.FIREBASE_MESSAGING_SENDER_ID='${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}';" >> dist/env.js
+          echo "window.FIREBASE_APP_ID='${{ secrets.FIREBASE_APP_ID }}';" >> dist/env.js
+
+      - name: Copy static files
+        run: |
+          cp index.html gantt.html dist/
+          cp -r components dist/
+          cp styles.css firebase-config.js event-manager.js dist/
+          mkdir -p dist/dist
+          cp dist/output.css dist/dist/
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist

@@ -1,0 +1,25 @@
+{
+  "name": "gantt-chart-maker",
+  "version": "1.0.0",
+  "description": "Aplikasi Gantt Chart dengan Firebase",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "watch:css": "tailwindcss -i ./src/input.css -o ./dist/output.css --watch",
+    "build:css": "tailwindcss -i ./src/input.css -o ./dist/output.css",
+    "build": "npm run build:css"
+  },
+  "dependencies": {
+    "express": "^4.21.1",
+    "firebase": "^9.6.1",
+    "dotenv": "^16.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.22",
+    "tailwindcss": "^3.4.1",
+    "postcss": "^8.4.32",
+    "autoprefixer": "^10.4.16"
+  },
+  "homepage": "https://rzki-lil.github.io/gantt-chart"
+}

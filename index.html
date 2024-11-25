@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>GanntChart Maker</title>
+    <link href="dist/output.css" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="env.js"></script>
+    <script type="module" src="firebase-config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-gray-50">
+    <nav class="bg-white shadow-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <i class="fas fa-calendar-alt text-blue-500 text-2xl mr-3"></i>
+                    <h1 class="text-xl font-bold text-gray-800">Manajemen Event Dengan Gantt Chart</h1>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="bg-blue-50 px-4 py-2 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+                        <span class="text-sm text-blue-600">
+                            <i class="fas fa-calendar-check mr-2"></i>
+                            Total Event: <span id="eventCount" class="font-semibold">0</span>
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div class="bg-white p-4 rounded-lg shadow-md hover:shadow-lg transition-shadow mb-8">
+            <div class="flex gap-4">
+                <div class="flex-1">
+                    <div class="relative">
+                        <input type="text" 
+                               id="searchEvent" 
+                               placeholder="Cari event berdasarkan nama..." 
+                               class="w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm hover:shadow-md transition-shadow">
+                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-semibold text-gray-800">Daftar Event Gantt Chart</h2>
+            <button id="addEventBtn" class="flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
+                <i class="fas fa-plus mr-2"></i>
+                Tambah Event Baru
+            </button>
+        </div>
+
+        <div id="loadingState" class="hidden">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div class="bg-white rounded-lg shadow-md p-6 animate-pulse">
+                    <div class="h-6 bg-gray-200 rounded w-3/4 mb-4"></div>
+                    <div class="h-4 bg-gray-200 rounded w-full mb-4"></div>
+                    <div class="h-4 bg-gray-200 rounded w-5/6"></div>
+                </div>
+                <!-- Repeat for multiple loading cards -->
+            </div>
+        </div>
+
+        <div id="eventList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        </div>
+
+        <div id="noResults" class="hidden text-center py-12">
+            <i class="fas fa-search text-gray-400 text-5xl mb-4"></i>
+            <p class="text-gray-500 text-lg">Tidak ada event yang sesuai dengan pencarian</p>
+        </div>
+    </div>
+
+    <!-- Modal -->
+    <div id="eventModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
+        <div class="bg-white max-w-md mx-auto mt-20 rounded-lg p-6 relative">
+            <span class="close absolute top-4 right-4 text-2xl cursor-pointer">&times;</span>
+            <h2 id="modalTitle" class="text-xl font-bold mb-6">Tambah Event Baru</h2>
+            <form id="eventForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium mb-1">Nama Event:</label>
+                    <input type="text" id="eventName" required class="w-full p-2 border rounded-md">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Deskripsi:</label>
+                    <textarea id="eventDescription" rows="3" class="w-full p-2 border rounded-md"></textarea>
+                </div>
+                <button type="submit" class="w-full bg-blue-500 text-white py-2 rounded-md hover:bg-blue-600">
+                    Simpan Event
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div id="footer-container"></div>
+
+    <script type="module">
+        import { createFooter } from './components/footer.js';
+        import { db } from './firebase-config.js';
+        import { loadEvents, deleteEvent, editEvent, addEvent, searchEvents } from './event-manager.js';
+
+        if (!db) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: 'Gagal terhubung ke database. Silakan muat ulang halaman.',
+                confirmButtonText: 'Muat Ulang',
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.location.reload();
+                }
+            });
+        }
+
+        window.db = db;
+        window.deleteEvent = deleteEvent;
+        window.editEvent = editEvent;
+        window.openGanttChart = (eventId) => {
+            window.location.href = `gantt.html?eventId=${eventId}`;
+        };
+
+        function showLoading(show = true) {
+            document.getElementById('loadingState').style.display = show ? 'block' : 'none';
+            document.getElementById('eventList').style.display = show ? 'none' : 'grid';
+        }
+
+        async function initializeApp() {
+            try {
+                showLoading(true);
+                await loadEvents();
+                showLoading(false);
+            } catch (error) {
+                console.error('Error loading events:', error);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: 'Gagal memuat data event. Silakan coba lagi.',
+                    confirmButtonText: 'Coba Lagi'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        initializeApp();
+                    }
+                });
+            }
+        }
+
+        document.getElementById('addEventBtn').addEventListener('click', () => {
+            document.getElementById('eventModal').style.display = 'block';
+        });
+        
+        document.querySelector('.close').addEventListener('click', () => {
+            document.getElementById('eventModal').style.display = 'none';
+        });
+        
+        document.getElementById('eventForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            try {
+                const eventData = {
+                    name: document.getElementById('eventName').value,
+                    description: document.getElementById('eventDescription').value,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+
+                const success = await addEvent(eventData);
+                if (success) {
+                    document.getElementById('eventModal').style.display = 'none';
+                    document.getElementById('eventForm').reset();
+                    await initializeApp();
+                }
+            } catch (error) {
+                console.error('Error adding event:', error);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: 'Gagal menambahkan event. Silakan coba lagi.'
+                });
+            }
+        });
+
+        let searchTimeout;
+        document.getElementById('searchEvent').addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                searchEvents(e.target.value);
+            }, 300);
+        });
+
+        document.addEventListener('DOMContentLoaded', initializeApp);
+        document.getElementById('footer-container').innerHTML = createFooter();
+    </script>
+</body>
+</html> 
