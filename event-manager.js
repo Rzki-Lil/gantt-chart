@@ -275,8 +275,7 @@ export function searchEvents(query) {
                 }));
 
                 const filteredEvents = events.filter(event => 
-                    event.name.toLowerCase().includes(query.toLowerCase()) ||
-                    (event.description && event.description.toLowerCase().includes(query.toLowerCase()))
+                    event.name.toLowerCase().includes(query.toLowerCase())
                 );
 
                 filteredEvents.sort((a, b) => {
